@@ -1,0 +1,13 @@
+name = "RayTracingOneWeekend"
+uuid = "fd567a94-75e3-4bbd-b1e4-a354c2e3c932"
+authors = ["Alok Singh <alokbeniwal@gmail.com> and contributors"]
+version = "0.1.0"
+
+[compat]
+julia = "1.7"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
