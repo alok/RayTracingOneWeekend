@@ -28,22 +28,24 @@ struct Ray
     direction::Point # really a vector, affine space
 end
 
-at(ray, t) = Ray(ray.origin, t * ray.direction)
+at(ray::Ray, t::Real) = Ray(ray.origin, t * ray.direction)
 
 # TODO: each ray can be done totally parallel to the others
-function color(ray::Ray)
-    # hardcode test for sphere
-    hit_record = hit(Sphere(Point(0, 0, -1), 0.5), ray)
-    if hit_record !== nothing && hit_record.t > 0
-        N = normalize(at(ray, hit_record.t).direction - Point(0, 0, -1))
-        return Color(N .+ 1) ./ 2
+function color(
+    world::AbstractArray{<:Solid},
+    ray::Ray;
+    t_min = eps(Float64),
+    t_max = Inf,
+)::Color
+    hit_record = hit(world, ray; t_min = t_min, t_max = t_max)
+    if hit_record !== nothing
+        return (hit_record.normal + white) / 2
     end
-    t = 0.5 * (ray.direction[2] + 1.0)
-    t = (normalize(ray.direction)[2] + 1.0) / 2 # unit y direction
+    t = (normalize(ray.direction).y + 1.0) / 2
     (1 - t) * white + t * blue
 end
 
-function test_img(h, w)
+function test_img(h, w)::Matrix{Color}
     mat = zeros(Color, (h, w))
 
     for row in h:-1:1, col in 1:w # Column major, so outer loop is *first*.
@@ -53,11 +55,8 @@ function test_img(h, w)
     mat
 end
 
-# TODO: can broadcast to color in parallel
-function color(rays) end
-
 # return record or nothing
-function hit(sphere::Sphere, ray::Ray, t_min = -Inf, t_max = Inf)::Union{HitRecord, Nothing}
+function hit(sphere::Sphere, ray::Ray; t_min = -Inf, t_max = Inf)::Union{HitRecord, Nothing}
     oc = ray.origin - sphere.center
     a = normsq(ray.direction)
     half_b = oc ⋅ ray.direction
@@ -76,33 +75,36 @@ function hit(sphere::Sphere, ray::Ray, t_min = -Inf, t_max = Inf)::Union{HitReco
         end
     end
 
-    pt = at(ray, root).origin
+    println(ray)
+    println(at(ray,root))
+    println(sphere)
+    pt = at(ray, root).direction
     normal = (pt - sphere.center) / sphere.radius
+    println(normal)
     front_face = normal ⋅ ray.direction < 0
 
     HitRecord(pt, front_face ? normal : -normal, root, front_face)
 end
 
 function hit(
-    xs::AbstractArray{<:Solid},
-    ray::Ray,
+    objects::AbstractArray{<:Solid},
+    ray::Ray;
     t_min = -Inf,
     t_max = Inf,
 )::Union{HitRecord, Nothing}
-    closest = nothing
-    closest_t = t_max
-    for x in xs
-        hit_record = hit(x, ray, t_min, closest_t)
+    closest, closest_t = nothing, t_max
+    for object in objects
+        hit_record = hit(object, ray; t_min = t_min, t_max = closest_t)
         if hit_record !== nothing && hit_record.t < closest_t
-            closest = hit_record
-            closest_t = hit_record.t
+            closest_t, closest = hit_record.t, hit_record
         end
     end
+
     closest
 end
 
-# TODO: intersect ray and viewport (line meet bivector)
 function main()
+    # Image
     aspect_ratio = 16 / 9
     img_width = 400
     img_height = Int(img_width ÷ aspect_ratio)
@@ -110,6 +112,10 @@ function main()
     viewport_width = viewport_height * aspect_ratio
     focal_len = 1.0
 
+    # World
+    world = [Sphere(Point(0, 0, -1), 0.5), Sphere(Point(0, -100.5, -1), 100)]
+
+    # Camera
     origin = zero(Point)
 
     horizontal = Point([viewport_width, 0, 0])
@@ -137,7 +143,7 @@ function main()
                 # TODO: check (u,v), since not 0 indexed
                 u, v = (col - 1) / (img_width - 1), (row - 1) / (img_height - 1)
                 ray = Ray(origin, lower_left_corner + u * horizontal + v * vertical)
-                c = color(ray)
+                c = color(world, ray)
                 write_color(io, c)
             end
         end
@@ -147,3 +153,6 @@ function main()
 end
 
 main()
+
+# TODO: intersect ray and viewport (line meet bivector)
+# TODO: can broadcast to color in parallel
