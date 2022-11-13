@@ -18,9 +18,12 @@ at(ray, t) = Ray(ray.origin, t * ray.direction)
 # TODO: each ray can be done totally parallel to the others
 function color(ray::Ray)
     # hardcode test for sphere
-    if hit_sphere(Point(0, 0, -1), 0.5, ray)
-        return Color(1, 0, 0)
+    t = hit_sphere(Point(0, 0, -1), 0.5, ray)
+    if t > 0
+        N = normalize(at(ray, t).direction - Point(0, 0, -1))
+        return Color(N .+ 1) ./ 2
     end
+    t = 0.5 * (ray.direction[2] + 1.0)
     t = (normalize(ray.direction)[2] + 1.0) / 2 # unit y direction
     # TODO: ones is white, other is blue
     white, blue = ones(Color), Color([0.5, 0.7, 1.0])
@@ -46,7 +49,12 @@ function hit_sphere(center::Point, radius::Real, ray::Ray)
     b = 2.0 * oc ⋅ ray.direction
     c = oc ⋅ oc - radius^2
     discriminant = b^2 - 4 * a * c
-    discriminant > 0
+
+    if discriminant < 0
+        -1
+    else
+        (-b - sqrt(discriminant)) / (2.0 * a)
+    end
 end
 
 # TODO: intersect ray and viewport (line meet bivector)
