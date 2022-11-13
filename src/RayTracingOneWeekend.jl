@@ -2,6 +2,7 @@ import FromFile: @from
 using Grassmann, ProgressMeter, StaticArrays, LinearAlgebra
 using IterTools
 Point, Color = (SVector{3, Float64}, SVector{3, Float64})
+red = Color(1, 0, 0)
 PPM_FILE = "/Users/alokbeniwal/.julia/dev/RayTracingOneWeekend/target/raytraced.ppm"
 
 normsq(x) = norm(x)^2
