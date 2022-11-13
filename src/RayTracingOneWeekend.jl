@@ -16,7 +16,10 @@ at(ray, t) = Ray(ray.origin, t * ray.direction)
 
 # TODO: each ray can be done totally parallel to the others
 function color(ray::Ray)
-    t = (normalize(ray[2])[2] + 1.0) / 2 # unit y direction
+    # hardcode test for sphere
+    if hit_sphere(Point(0, 0, -1), 0.5, ray)
+        return Color(1, 0, 0)
+    end
     t = (normalize(ray.direction)[2] + 1.0) / 2 # unit y direction
     # TODO: ones is white, other is blue
     white, blue = ones(Color), Color([0.5, 0.7, 1.0])
@@ -34,8 +37,15 @@ function test_img(h, w)
 end
 
 # TODO: can broadcast to color in parallel
-function color(rays)
+function color(rays) end
 
+function hit_sphere(center::Point, radius::Real, ray::Ray)
+    oc = ray.origin - center
+    a = ray.direction ⋅ ray.direction
+    b = 2.0 * oc ⋅ ray.direction
+    c = oc ⋅ oc - radius^2
+    discriminant = b^2 - 4 * a * c
+    discriminant > 0
 end
 
 # TODO: intersect ray and viewport (line meet bivector)
@@ -48,9 +58,11 @@ function main()
     focal_len = 1.0
 
     origin = zero(Point)
+
     horizontal = Point([viewport_width, 0, 0])
     vertical = Point([0, viewport_height, 0])
     inwards = Point(0, 0, focal_len)
+
     lower_left_corner = origin - horizontal / 2 - vertical / 2 - inwards
 
     function write_ppm(matrix::Matrix{Color}, filename = PPM_FILE)
