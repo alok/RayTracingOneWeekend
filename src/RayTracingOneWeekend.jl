@@ -7,6 +7,14 @@ PPM_FILE = "/Users/alokbeniwal/.julia/dev/RayTracingOneWeekend/target/raytraced.
 
 normsq(x) = norm(x)^2
 
+# hittable
+abstract type Solid end
+
+struct Sphere{R <: Real} <: Solid
+    center::Point
+    radius::R
+end
+
 # Ray = Tuple{Point, Point} # start, end
 struct Ray
     origin::Point
@@ -18,7 +26,7 @@ at(ray, t) = Ray(ray.origin, t * ray.direction)
 # TODO: each ray can be done totally parallel to the others
 function color(ray::Ray)
     # hardcode test for sphere
-    t = hit_sphere(Point(0, 0, -1), 0.5, ray)
+    t = hit(Sphere(Point(0, 0, -1), 0.5), ray)
     if t > 0
         N = normalize(at(ray, t).direction - Point(0, 0, -1))
         return Color(N .+ 1) ./ 2
@@ -43,17 +51,17 @@ end
 # TODO: can broadcast to color in parallel
 function color(rays) end
 
-function hit_sphere(center::Point, radius::Real, ray::Ray)
-    oc = ray.origin - center
-    a = ray.direction ⋅ ray.direction
-    b = 2.0 * oc ⋅ ray.direction
-    c = oc ⋅ oc - radius^2
-    discriminant = b^2 - 4 * a * c
 
+function hit(sphere::Sphere, ray::Ray)
+    oc = ray.origin - sphere.center
+    a = normsq(ray.direction)
+    half_b = oc ⋅ ray.direction
+    c = normsq(oc) - sphere.radius^2
+    discriminant = half_b^2 - a * c
     if discriminant < 0
-        -1
+        return -1 # why?
     else
-        (-b - sqrt(discriminant)) / (2.0 * a)
+        -(half_b + sqrt(discriminant)) / a
     end
 end
 
