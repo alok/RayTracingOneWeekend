@@ -75,12 +75,8 @@ function hit(sphere::Sphere, ray::Ray; t_min = -Inf, t_max = Inf)::Union{HitReco
         end
     end
 
-    println(ray)
-    println(at(ray,root))
-    println(sphere)
     pt = at(ray, root).direction
     normal = (pt - sphere.center) / sphere.radius
-    println(normal)
     front_face = normal ⋅ ray.direction < 0
 
     HitRecord(pt, front_face ? normal : -normal, root, front_face)
