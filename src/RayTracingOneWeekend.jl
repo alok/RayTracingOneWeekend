@@ -6,13 +6,18 @@ PPM_FILE = "/Users/alokbeniwal/.julia/dev/RayTracingOneWeekend/target/raytraced.
 
 normsq(x) = norm(x)^2
 
-Ray = Tuple{Point, Point} # start, end
+# Ray = Tuple{Point, Point} # start, end
+struct Ray
+    origin::Point
+    direction::Point # really a vector, affine space
+end
 
-at(ray, t) = Ray((ray[1], t * ray[2]))
+at(ray, t) = Ray(ray.origin, t * ray.direction)
 
 # TODO: each ray can be done totally parallel to the others
 function color(ray::Ray)
     t = (normalize(ray[2])[2] + 1.0) / 2 # unit y direction
+    t = (normalize(ray.direction)[2] + 1.0) / 2 # unit y direction
     # TODO: ones is white, other is blue
     white, blue = ones(Color), Color([0.5, 0.7, 1.0])
     (1 - t) * white + t * blue
@@ -66,7 +71,7 @@ function main()
             for row in img_height:-1:1, col in 1:img_width
                 # TODO: check (u,v), since not 0 indexed
                 u, v = (col - 1) / (img_width - 1), (row - 1) / (img_height - 1)
-                ray = Ray((origin, lower_left_corner + u * horizontal + v * vertical))
+                ray = Ray(origin, lower_left_corner + u * horizontal + v * vertical)
                 c = color(ray)
                 write_color(io, c)
             end
