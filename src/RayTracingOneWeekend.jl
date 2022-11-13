@@ -2,7 +2,7 @@ import FromFile: @from
 using Grassmann, ProgressMeter, StaticArrays, LinearAlgebra
 using IterTools
 Point, Color = (SVector{3, Float64}, SVector{3, Float64})
-red = Color(1, 0, 0)
+red, white, blue = Color(1, 0, 0), Color(1, 1, 1), Color(0.5, 0.7, 1.0)
 PPM_FILE = "/Users/alokbeniwal/.julia/dev/RayTracingOneWeekend/target/raytraced.ppm"
 
 normsq(x) = norm(x)^2
@@ -40,8 +40,6 @@ function color(ray::Ray)
     end
     t = 0.5 * (ray.direction[2] + 1.0)
     t = (normalize(ray.direction)[2] + 1.0) / 2 # unit y direction
-    # TODO: ones is white, other is blue
-    white, blue = ones(Color), Color([0.5, 0.7, 1.0])
     (1 - t) * white + t * blue
 end
 
@@ -50,7 +48,7 @@ function test_img(h, w)
 
     for row in h:-1:1, col in 1:w # Column major, so outer loop is *first*.
         r, g, b = (col - 1) / (w - 1), (row - 1) / (h - 1), 0.25
-        mat[row, col] = Color([r, g, b])
+        mat[row, col] = Color(r, g, b)
     end
     mat
 end
