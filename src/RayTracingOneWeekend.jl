@@ -2,7 +2,8 @@ import FromFile: @from
 using Grassmann, ProgressMeter, StaticArrays, LinearAlgebra
 using IterTools
 Point, Color = (SVector{3, Float64}, SVector{3, Float64})
-red, white, blue = Color(1, 0, 0), Color(1, 1, 1), Color(0.5, 0.7, 1.0)
+red, white, blue, black =
+    Color(1, 0, 0), Color(1, 1, 1), Color(0.5, 0.7, 1.0), Color(0, 0, 0)
 PPM_FILE = "/Users/alokbeniwal/.julia/dev/RayTracingOneWeekend/target/raytraced.ppm"
 
 normsq(x) = norm(x)^2
@@ -13,6 +14,16 @@ abstract type Solid end
 struct Sphere{R <: Real} <: Solid
     center::Point
     radius::R
+end
+struct Camera
+    origin::Point
+    horizontal::Point
+    vertical::Point
+    lower_left_corner::Point
+end
+
+function ray(u, v, cam::Camera)::Ray
+    Ray(cam.origin, cam.lower_left_corner + u * cam.horizontal + v * cam.vertical)
 end
 
 struct HitRecord
@@ -103,29 +114,34 @@ function main()
     # Image
     aspect_ratio = 16 / 9
     img_width = 400
-    img_height = Int(img_width ÷ aspect_ratio)
     viewport_height = 2.0
-    viewport_width = viewport_height * aspect_ratio
     focal_len = 1.0
+    samples_per_pixel = 100
+    img_height = Int(img_width ÷ aspect_ratio)
+    viewport_width = viewport_height * aspect_ratio
 
     # World
     world = [Sphere(Point(0, 0, -1), 0.5), Sphere(Point(0, -100.5, -1), 100)]
 
     # Camera
-    origin = zero(Point)
-
-    horizontal = Point([viewport_width, 0, 0])
-    vertical = Point([0, viewport_height, 0])
-    inwards = Point(0, 0, focal_len)
-
-    lower_left_corner = origin - horizontal / 2 - vertical / 2 - inwards
+    origin, horizontal, vertical =
+        zero(Point), Point([viewport_width, 0, 0]), Point([0, viewport_height, 0])
+    camera = Camera(
+        origin,
+        horizontal,
+        vertical,
+        origin - horizontal / 2 - vertical / 2 - Point(0, 0, focal_len),
+    )
 
     function write_ppm(matrix::Matrix{Color}, filename = PPM_FILE)
         rows, cols = size(matrix)
-        function write_color(io, c)
-            r, g, b = Int.(floor.(255.999 * c))
+
+        function write_color(io, c, samples_per_pixel)
+            r, g, b = Int.(floor.(256 * clamp.(c / samples_per_pixel, 0, 1 - eps(Float64))))
+
             write(io, "$r $g $b \n")
         end
+
         open(filename, "w") do io
             write(
                 io,
@@ -136,11 +152,17 @@ function main()
           """,
             )
             for row in img_height:-1:1, col in 1:img_width
-                # TODO: check (u,v), since not 0 indexed
-                u, v = (col - 1) / (img_width - 1), (row - 1) / (img_height - 1)
-                ray = Ray(origin, lower_left_corner + u * horizontal + v * vertical)
-                c = color(world, ray)
-                write_color(io, c)
+                # antialias
+                pixel_color = black
+                for (jitter_u, jitter_v) in ((rand(), rand()) for _ in 1:samples_per_pixel)
+                    # TODO: check (u,v), since not 0 indexed
+                    u, v = (col - 1 + jitter_u) / (img_width - 1 + jitter_v),
+                    (row - 1) / (img_height - 1)
+
+                    r = ray(u, v, camera)
+                    pixel_color += color(world, r)
+                end
+                write_color(io, pixel_color, samples_per_pixel)
             end
         end
     end
