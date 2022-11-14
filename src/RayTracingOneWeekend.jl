@@ -1,5 +1,6 @@
 import FromFile: @from
 using Grassmann, ProgressMeter, StaticArrays, LinearAlgebra
+using Distributions
 using IterTools
 Point, Color = (SVector{3, Float64}, SVector{3, Float64})
 red, white, blue, black =
@@ -42,15 +43,23 @@ end
 at(ray::Ray, t::Real) = Ray(ray.origin, t * ray.direction)
 
 # TODO: each ray can be done totally parallel to the others
-function color(
+function colorize(
     world::AbstractArray{<:Solid},
     ray::Ray;
-    t_min = eps(Float64),
+    t_min = 0.01,
     t_max = Inf,
+    depth = 50,
 )::Color
+    if depth ≤ 0
+        return black
+    end
+
     hit_record = hit(world, ray; t_min = t_min, t_max = t_max)
     if hit_record !== nothing
-        return (hit_record.normal + white) / 2
+        tgt = hit_record.pt + hit_record.normal + rand_unit_vec()
+        # reflect/absorb 1/2
+        return colorize(world, Ray(hit_record.pt, tgt - hit_record.pt); depth = depth - 1) /
+               2
     end
     t = (normalize(ray.direction).y + 1.0) / 2
     (1 - t) * white + t * blue
@@ -110,13 +119,20 @@ function hit(
     closest
 end
 
+function rand_unit_vec()::Point
+    while true
+        p = 2 * rand(Point) .- 1 # center to -1, 1
+        if normsq(p) < 1
+            return normalize(p)
+        end
+    end
+end
+
 function main()
     # Image
-    aspect_ratio = 16 / 9
-    img_width = 400
-    viewport_height = 2.0
-    focal_len = 1.0
-    samples_per_pixel = 100
+    aspect_ratio, img_width, viewport_height, focal_len = 16 / 9, 400, 2.0, 1.0
+    # TODO: increase samples
+    samples_per_pixel, max_depth = 100, 50
     img_height = Int(img_width ÷ aspect_ratio)
     viewport_width = viewport_height * aspect_ratio
 
@@ -137,7 +153,8 @@ function main()
         rows, cols = size(matrix)
 
         function write_color(io, c, samples_per_pixel)
-            r, g, b = Int.(floor.(256 * clamp.(c / samples_per_pixel, 0, 1 - eps(Float64))))
+            # the sqrt is gamma correction
+            r, g, b = Int.(floor.(256 * clamp.(sqrt.(c / samples_per_pixel), 0.0, 0.999)))
 
             write(io, "$r $g $b \n")
         end
@@ -156,11 +173,11 @@ function main()
                 pixel_color = black
                 for (jitter_u, jitter_v) in ((rand(), rand()) for _ in 1:samples_per_pixel)
                     # TODO: check (u,v), since not 0 indexed
-                    u, v = (col - 1 + jitter_u) / (img_width - 1 + jitter_v),
-                    (row - 1) / (img_height - 1)
+                    u, v = (col - 1 + jitter_u) / (img_width - 1),
+                    (row - 1 + jitter_v) / (img_height - 1)
 
                     r = ray(u, v, camera)
-                    pixel_color += color(world, r)
+                    pixel_color += colorize(world, r, depth = max_depth)
                 end
                 write_color(io, pixel_color, samples_per_pixel)
             end
