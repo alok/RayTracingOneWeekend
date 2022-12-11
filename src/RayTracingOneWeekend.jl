@@ -11,14 +11,14 @@ PPM_FILE = "/Users/alokbeniwal/.julia/dev/RayTracingOneWeekend/target/raytraced.
 normsq(x) = norm(x)^2
 
 # hittable
-abstract type Solid end
+abstract type Shape end
 
-abstract type Material end
+abstract type Essence end
 
-struct Sphere{R <: Real} <: Solid
+struct Sphere{R <: Real} <: Shape
     center::Point
     radius::R
-    material::Material
+    material::Essence
 end
 struct Camera
     origin::Point
@@ -35,15 +35,15 @@ struct HitRecord
     pt::Point
     normal::Point
     t::Float64
-    material::Material
+    material::Essence
     front_face::Bool
 end
 
-struct Lambertian <: Material
+struct Lambertian <: Essence
     albedo::Color
 end
 
-struct Metal <: Material
+struct Metal <: Essence
     albedo::Color
 end
 
@@ -87,9 +87,9 @@ at(ray::Ray, t::Real) = Ray(ray.origin, t * ray.direction)
 # TODO: each ray can be done totally parallel to the others
 # TODO: why doesn't t_min of 0.01 work?
 function colorize(
-    world::AbstractArray{<:Solid},
+    world::AbstractArray{<:Shape},
     ray::Ray;
-    t_min = 0.5,#TODO: fix
+    t_min = .5,#TODO: fix 
     t_max = Inf,
     depth = 50,
 )::Color
@@ -156,7 +156,7 @@ function hit(sphere::Sphere, ray::Ray; t_min = -Inf, t_max = Inf)::Union{HitReco
 end
 
 function hit(
-    objects::AbstractArray{<:Solid},
+    objects::AbstractArray{<:Shape},
     ray::Ray;
     t_min = -Inf, # TODO: fix
     t_max = Inf,
@@ -247,6 +247,7 @@ function main()
                     r = ray(u, v, camera)
                     pixel_color += colorize(world, r, depth = max_depth)
                 end
+            println(pixel_color)
                 write_color(io, pixel_color, samples_per_pixel)
             end
         end
