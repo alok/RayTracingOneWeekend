@@ -1,4 +1,5 @@
 import FromFile: @from
+using Debugger
 using Grassmann, ProgressMeter, StaticArrays, LinearAlgebra
 using Distributions
 using IterTools
@@ -12,9 +13,12 @@ normsq(x) = norm(x)^2
 # hittable
 abstract type Solid end
 
+abstract type Material end
+
 struct Sphere{R <: Real} <: Solid
     center::Point
     radius::R
+    material::Material
 end
 struct Camera
     origin::Point
@@ -31,7 +35,16 @@ struct HitRecord
     pt::Point
     normal::Point
     t::Float64
+    material::Material
     front_face::Bool
+end
+
+struct Lambertian <: Material
+    albedo::Color
+end
+
+struct Metal <: Material
+    albedo::Color
 end
 
 # Ray = Tuple{Point, Point} # start, end
@@ -40,13 +53,43 @@ struct Ray
     direction::Point # really a vector, affine space
 end
 
+function reflect(v, n)
+    # v + 2(v ⋅ n)n
+    # n + 2(v ⋅ n)v
+    v - 2(v ⋅ n)n
+end
+
+function scatter(ray_in::Ray, hit_record::HitRecord, material::Lambertian)
+    r = rand_unit_vector()
+
+    scatter_direction = if hit_record.normal ≈ -r
+        hit_record.normal
+    else
+        hit_record.normal + r
+    end
+
+    # TODO: return scattered and attenuation, the extra args are meant to be mutated. not on my watch.
+    scattered = Ray(hit_record.pt, scatter_direction)
+    return scattered
+end
+
+function scatter(ray_in::Ray, hit_record::HitRecord, material::Metal)
+    # TODO: ray_in may be normalized(?)
+    reflected = reflect(normalize(ray_in.direction), hit_record.normal)
+
+    # TODO: return scattered and attenuation, the extra args are meant to be mutated. not on my watch.
+    scattered = Ray(hit_record.pt, reflected)
+    return scattered
+end
+
 at(ray::Ray, t::Real) = Ray(ray.origin, t * ray.direction)
 
 # TODO: each ray can be done totally parallel to the others
+# TODO: why doesn't t_min of 0.01 work?
 function colorize(
     world::AbstractArray{<:Solid},
     ray::Ray;
-    t_min = 0.01,
+    t_min = 0.5,#TODO: fix
     t_max = Inf,
     depth = 50,
 )::Color
@@ -56,13 +99,23 @@ function colorize(
 
     hit_record = hit(world, ray; t_min = t_min, t_max = t_max)
     if hit_record !== nothing
-        tgt = hit_record.pt + hit_record.normal + rand_unit_vec()
-        # reflect/absorb 1/2
-        return colorize(world, Ray(hit_record.pt, tgt - hit_record.pt); depth = depth - 1) /
-               2
+        scattered = scatter(ray, hit_record, hit_record.material)
+        # TODO: revert
+        if (scattered.direction ⋅ hit_record.normal) > 0.0
+            return hit_record.material.albedo .* colorize(
+                world,
+                scattered;
+                t_min = t_min,
+                t_max = t_max,
+                depth = depth - 1,
+            )
+        else
+            return black
+        end
     end
-    t = (normalize(ray.direction).y + 1.0) / 2
-    (1 - t) * white + t * blue
+    # TODO: understand this block
+    t = 0.5 * (normalize(ray.direction).y + 1.0)
+    (1.0 - t) * white + t * blue
 end
 
 function test_img(h, w)::Matrix{Color}
@@ -97,15 +150,15 @@ function hit(sphere::Sphere, ray::Ray; t_min = -Inf, t_max = Inf)::Union{HitReco
 
     pt = at(ray, root).direction
     normal = (pt - sphere.center) / sphere.radius
-    front_face = normal ⋅ ray.direction < 0
+    front_face = normal ⋅ ray.direction < 0.0
 
-    HitRecord(pt, front_face ? normal : -normal, root, front_face)
+    HitRecord(pt, front_face ? normal : -normal, root, sphere.material, front_face)
 end
 
 function hit(
     objects::AbstractArray{<:Solid},
     ray::Ray;
-    t_min = -Inf,
+    t_min = -Inf, # TODO: fix
     t_max = Inf,
 )::Union{HitRecord, Nothing}
     closest, closest_t = nothing, t_max
@@ -119,10 +172,12 @@ function hit(
     closest
 end
 
-function rand_unit_vec()::Point
+function rand_unit_vector()::Point
     while true
         p = 2 * rand(Point) .- 1 # center to -1, 1
-        if normsq(p) < 1
+        if normsq(p) >= 1
+            continue
+        else
             return normalize(p)
         end
     end
@@ -135,26 +190,37 @@ function main()
     samples_per_pixel, max_depth = 100, 50
     img_height = Int(img_width ÷ aspect_ratio)
     viewport_width = viewport_height * aspect_ratio
-
+    ground, center, left, right = Lambertian(Color(0.8, 0.8, 0.0)),
+    Lambertian(Color(0.7, 0.3, 0.3)),
+    # Lambertian(Color(0.8, 0.8, 0.8)),
+    # Lambertian(Color(0.8, 0.6, 0.2))
+    Metal(Color(0.8, 0.8, 0.8)),
+    Metal(Color(0.8, 0.6, 0.2))
     # World
-    world = [Sphere(Point(0, 0, -1), 0.5), Sphere(Point(0, -100.5, -1), 100)]
+    world = [
+        Sphere(Point(0.0, -100.5, -1.0), 100.0, ground),
+        Sphere(Point(0.0, 0.0, -1.0), 0.5, center),
+        Sphere(Point(-1.0, 0.0, -1.0), 0.5, left),
+        Sphere(Point(1.0, 0.0, -1.0), 0.5, right),
+    ]
 
     # Camera
     origin, horizontal, vertical =
-        zero(Point), Point([viewport_width, 0, 0]), Point([0, viewport_height, 0])
+        zero(Point), Point([viewport_width, 0.0, 0.0]), Point([0.0, viewport_height, 0.0])
     camera = Camera(
         origin,
         horizontal,
         vertical,
-        origin - horizontal / 2 - vertical / 2 - Point(0, 0, focal_len),
+        origin - horizontal / 2 - vertical / 2 - Point(0.0, 0.0, focal_len),
     )
 
     function write_ppm(matrix::Matrix{Color}, filename = PPM_FILE)
         rows, cols = size(matrix)
 
         function write_color(io, c, samples_per_pixel)
-            # the sqrt is gamma correction
-            r, g, b = Int.(floor.(256 * clamp.(sqrt.(c / samples_per_pixel), 0.0, 0.999)))
+            # TODO try writing to pixels without averaging only at end
+            # the ^.5 = sqrt is gamma correction
+            r, g, b = floor.(Int, 256 * clamp.((c / samples_per_pixel) .^ 0.5, 0.0, 0.9))
 
             write(io, "$r $g $b \n")
         end
@@ -170,11 +236,13 @@ function main()
             )
             for row in img_height:-1:1, col in 1:img_width
                 # antialias
-                pixel_color = black
+                pixel_color = red #TODO vary this, check for NaNs
                 for (jitter_u, jitter_v) in ((rand(), rand()) for _ in 1:samples_per_pixel)
                     # TODO: check (u,v), since not 0 indexed
-                    u, v = (col - 1 + jitter_u) / (img_width - 1),
-                    (row - 1 + jitter_v) / (img_height - 1)
+                    u, v = [
+                        ((col - 1 + jitter_u) / (img_width - 1)),
+                        ((row - 1 + jitter_v) / (img_height - 1)),
+                    ]
 
                     r = ray(u, v, camera)
                     pixel_color += colorize(world, r, depth = max_depth)
@@ -184,9 +252,8 @@ function main()
         end
     end
 
-    write_ppm(test_img(img_height, img_width))
+    write_ppm(zeros(Color, (img_height, img_width)))
 end
-
 main()
 
 # TODO: intersect ray and viewport (line meet bivector)
